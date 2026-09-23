@@ -132,6 +132,39 @@ def restore():
     """
     from netsieve.block import restore_blocked
     restore_blocked()   
+
+@_cli.command()
+def setup():
+    """Install all required system dependencies automatically.
+
+    Checks for and installs: iptables, traceroute.
+    Run this once after installing netsieve.
+
+    Example: sudo netsieve setup
+    """
+    import shutil
+    import subprocess
+
+    console.print(Text("\n  Checking system dependencies...\n", style="bold"))
+
+    deps = {
+        "iptables": "sudo apt install iptables -y",
+        "traceroute": "sudo apt install traceroute -y",
+    }
+
+    for name, install_cmd in deps.items():
+        if shutil.which(name):
+            console.print(Text(f"  ✓ {name} — already installed", style="green"))
+        else:
+            console.print(Text(f"  ✗ {name} — installing...", style="yellow"))
+            r = subprocess.run(install_cmd, shell=True)
+            if r.returncode == 0:
+                console.print(Text(f"  ✓ {name} — installed", style="green"))
+            else:
+                console.print(Text(f"  ✗ {name} — FAILED to install", style="red"))
+
+    console.print(Text("\n  All dependencies ready.", style="bold green"))
+    console.print()   
     
 def main():
     show_banner()
