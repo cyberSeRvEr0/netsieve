@@ -5,14 +5,16 @@ from rich.text import Text
 console = Console()
 
 def show_banner():
-    banner = (
-        "  _   _ ______ ______ ___ ___  _________     _________\n"
-        " | \\ | | ____|_   _/ ___|_ _|| ___ \\ \\   /  /______| \n"
-        " |  \\| |  _|   | | \\___ \\ ||   _| \\ \\ /  /| | _|   \n"
-        " | |\\  | |___  | |  ___) || ||  |___ \\  V  / | |____ \n"
-        " |_| \\_|_____| |_| |____/___||______| \\___/  |______| "
-    )
-    console.print(Text(banner, style="bold cyan"))
+    BANNER = r"""
+     _   _  _____ _____ _____ _____ _____ _   _ _____ 
+    | \ | ||  ___|_   _/  ___|_   _|  ___| | | |  ___|
+    |  \| || |__   | | \ `--.  | | | |__ | | | | |__  
+    | . ` ||  __|  | |  `--. \ | | |  __|| | | |  __| 
+    | |\  || |___  | | /\__/ /_| |_| |___\ \_/ / |___ 
+    \_| \_/\____/  \_/ \____/ \___/\____/ \___/\____/ 
+    """
+
+    console.print(Text(BANNER, style="bold cyan"))
     console.print(Text("  Passive network capture | Payload decode | Attacker trace", style="dim"))
     console.print()
 

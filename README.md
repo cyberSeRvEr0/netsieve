@@ -10,10 +10,12 @@ One command. No config. No cloud. No daemon.
 # Requirements: Linux/WSL, Python 3.10+, sudo
 # traceroute is installed below for the trace command
 
-git clone https://github.com/SeRvEr0/netsieve.git
+git clone https://github.com/cyberSeRvEr0/netsieve.git
 cd netsieve
-pip install .
+sudo pip install --break-system-packages .   
 sudo apt install traceroute -y
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc   
 
 # --- Watch for incoming attacks in real-time ---
 sudo netsieve detect -d 30
