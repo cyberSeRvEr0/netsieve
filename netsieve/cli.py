@@ -73,7 +73,8 @@ def capture(interface, duration, output):
 @_cli.command()
 @click.option("--interface", "-i", default=None, help="Network interface to watch (e.g. eth0, wlan0). Default: auto-detect.")
 @click.option("--duration", "-d", default=None, type=int, help="How long to watch, in seconds. Example: -d 60 watches for 60 seconds. Default: runs until Ctrl+C.")
-def detect(interface, duration):
+@click.option("--webhook", "-w", default=None, help="Slack or Discord webhook URL for alerts. Example: -w https://hooks.slack.com/services/XXX")
+def detect(interface, duration, webhook):
     """Watch the network in real-time and print an alert the moment an attack pattern is detected.
 
     Scans every incoming packet for known threat signatures:
@@ -85,8 +86,8 @@ def detect(interface, duration):
     Example: sudo netsieve detect -d 30
     """
     from netsieve.detect import run_detect
-    run_detect(interface=interface, duration=duration)
-
+    run_detect(interface=interface, duration=duration, webhook_url=webhook)   
+    
 @_cli.command()
 @click.argument("ip")
 def trace(ip):
