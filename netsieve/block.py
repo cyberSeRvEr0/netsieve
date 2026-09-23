@@ -6,7 +6,16 @@ from rich.text import Text
 
 console = Console()
 
-BLOCKLIST_FILE = Path.home() / ".netsieve_blocked.json"
+import os
+import pwd
+
+def _get_home():
+    sudo_user = os.environ.get("SUDO_USER")
+    if sudo_user:
+        return Path(pwd.getpwnam(sudo_user).pw_dir)
+    return Path.home()
+
+BLOCKLIST_FILE = _get_home() / ".netsieve_blocked.json"   
 
 def _load_blocked():
     if BLOCKLIST_FILE.exists():
