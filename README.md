@@ -13,8 +13,7 @@ One command. No config. No cloud. No daemon.
 git clone https://github.com/cyberSeRvEr0/netsieve.git
 cd netsieve
 sudo pip install --break-system-packages .
-sudo netsieve setup
-
+sudo netsieve setup    # installs iptables + traceroute automatically   
 
 # --- Watch for incoming attacks in real-time ---
 sudo netsieve detect -d 30
