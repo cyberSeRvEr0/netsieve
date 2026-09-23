@@ -1,28 +1,55 @@
 import click
-import textwrap
 from rich.console import Console
 from rich.text import Text
 
 console = Console()
 
 def show_banner():
-    BANNER = textwrap.dedent(r"""
-        _   __ ______ ______ _____  ____ ______ _    __ ______
-       / | / // ____//_  __// ___//  _// ____// |  / // ____/
-      /  |/ // __/    / /   \__ \ / / / __/   | | / // __/
-     / /|  // /___   / /   ___/ // / / /___   | |/ // /___
-    /_/ |_//_____/  /_/   /____//___//_____/  |___//_____/
-    """).strip()
-
-    console.print(Text(BANNER, style="bold cyan"))
+    banner = (
+        "  _   _ _____ _____ ____ ___ _______     _______ \n"
+        " | \\ | | ____|_   _/ ___|_ _| ____\\ \\   / / ____| \n"
+        " |  \\| |  _|   | | \\___ \\ | ||  _|  \\ / / /|  _|   \n"
+        " | |\\  | |___  | |  ___) || || |___  \\ V / | |___  \n"
+        " |_| \\_|_____| |_| |____/___|_____|   \\_/  |_____| "
+    )
+    console.print(Text(banner, style="bold cyan"))
     console.print(Text("  Passive network capture | Payload decode | Attacker trace", style="dim"))
-    console.print()   
+    console.print()
 
 @click.group()
 @click.version_option()
 def _cli():
     """NetSieve — Passive network capture, payload decoding, and attacker tracing."""
     pass
+
+@_cli.command()
+def setup():
+    """Install all required system dependencies (iptables, traceroute).
+
+    Checks for and installs any missing system packages automatically.
+    Run this once after installing netsieve.
+
+    Example: sudo netsieve setup
+    """
+    import shutil
+    import subprocess
+    console.print(Text("\n  Checking system dependencies...\n", style="bold"))
+    deps = {
+        "iptables": "sudo apt install iptables -y",
+        "traceroute": "sudo apt install traceroute -y",
+    }
+    for name, install_cmd in deps.items():
+        if shutil.which(name):
+            console.print(Text(f"  \u2713 {name} \u2014 already installed", style="green"))
+        else:
+            console.print(Text(f"  \u2717 {name} \u2014 installing...", style="yellow"))
+            r = subprocess.run(install_cmd, shell=True)
+            if r.returncode == 0:
+                console.print(Text(f"  \u2713 {name} \u2014 installed", style="green"))
+            else:
+                console.print(Text(f"  \u2717 {name} \u2014 FAILED", style="red"))
+    console.print(Text("\n  All dependencies ready.", style="bold green"))
+    console.print()
 
 @_cli.command()
 @click.option("--interface", "-i", default=None, help="Network interface to listen on (e.g. eth0, wlan0). Default: auto-detect.")
@@ -34,9 +61,12 @@ def capture(interface, duration, output):
     Watches the network and logs every packet that passes through.
     Each conversation (flow) is saved as a .txt file in the output folder.
     Payloads are decoded so you can read them without Wireshark.
+
+    Example: sudo netsieve capture -i eth0 -d 60
     """
-    console.print(f"[bold cyan]NetSieve[/] — capturing on {interface or 'auto'} for {duration or '∞'}s")
-    console.print(f"[dim]Output: {output} | Ctrl+C to stop[/]")
+    from netsieve.capture import NetSieve
+    ns = NetSieve(interface=interface, output_dir=output)
+    ns.run(duration=duration)
 
 @_cli.command()
 @click.option("--interface", "-i", default=None, help="Network interface to watch (e.g. eth0, wlan0). Default: auto-detect.")
@@ -49,6 +79,8 @@ def detect(interface, duration):
     When a match is found, it prints the attacker IP, the threat type,
     and a snippet of the malicious data. At the end it lists all
     attacking IPs so you can trace them.
+
+    Example: sudo netsieve detect -d 30
     """
     from netsieve.detect import run_detect
     run_detect(interface=interface, duration=duration)
@@ -87,7 +119,7 @@ def report(ip, output):
     """
     from netsieve.report import generate_report
     path = generate_report(ip, output=output)
-    console.print(f"[green]✓ Report saved: {path}[/]")
+    console.print(f"[green]\u2713 Report saved: {path}[/]")
 
 @_cli.command()
 @click.argument("ip")
@@ -96,7 +128,7 @@ def block(ip):
 
     Adds the IP to your firewall (iptables). The attacker can no longer
     reach this machine. The block persists in ~/.netsieve_blocked.json
-    and is restored automatically on next run.
+    and can be restored after reboot with 'netsieve restore'.
 
     Example: sudo netsieve block 203.0.113.44
     """
@@ -117,7 +149,12 @@ def unblock(ip):
 
 @_cli.command(name="list")
 def list_blocked():
-    """Show all currently blocked IP addresses."""
+    """Show all currently blocked IP addresses.
+
+    Reads ~/.netsieve_blocked.json and prints the list.
+
+    Example: netsieve list
+    """
     from netsieve.block import list_blocked as _list
     _list()
 
@@ -131,41 +168,8 @@ def restore():
     Example: sudo netsieve restore
     """
     from netsieve.block import restore_blocked
-    restore_blocked()   
+    restore_blocked()
 
-@_cli.command()
-def setup():
-    """Install all required system dependencies automatically.
-
-    Checks for and installs: iptables, traceroute.
-    Run this once after installing netsieve.
-
-    Example: sudo netsieve setup
-    """
-    import shutil
-    import subprocess
-
-    console.print(Text("\n  Checking system dependencies...\n", style="bold"))
-
-    deps = {
-        "iptables": "sudo apt install iptables -y",
-        "traceroute": "sudo apt install traceroute -y",
-    }
-
-    for name, install_cmd in deps.items():
-        if shutil.which(name):
-            console.print(Text(f"  ✓ {name} — already installed", style="green"))
-        else:
-            console.print(Text(f"  ✗ {name} — installing...", style="yellow"))
-            r = subprocess.run(install_cmd, shell=True)
-            if r.returncode == 0:
-                console.print(Text(f"  ✓ {name} — installed", style="green"))
-            else:
-                console.print(Text(f"  ✗ {name} — FAILED to install", style="red"))
-
-    console.print(Text("\n  All dependencies ready.", style="bold green"))
-    console.print()   
-    
 def main():
     show_banner()
     _cli()
