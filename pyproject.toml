@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "netsieve"
+version = "0.1.0"
+description = "Passive network capture, payload decoding, and attacker tracing"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "scapy>=2.5",
+    "rich>=13.0",
+    "requests>=2.31",
+    "click>=8.0",
+]
+
+[project.scripts]
+netsieve = "netsieve.cli:main"   
