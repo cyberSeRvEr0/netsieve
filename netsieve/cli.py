@@ -89,6 +89,50 @@ def report(ip, output):
     path = generate_report(ip, output=output)
     console.print(f"[green]✓ Report saved: {path}[/]")
 
+@_cli.command()
+@click.argument("ip")
+def block(ip):
+    """Block an IP address — all traffic from it will be dropped.
+
+    Adds the IP to your firewall (iptables). The attacker can no longer
+    reach this machine. The block persists in ~/.netsieve_blocked.json
+    and is restored automatically on next run.
+
+    Example: sudo netsieve block 203.0.113.44
+    """
+    from netsieve.block import block_ip
+    block_ip(ip)
+
+@_cli.command()
+@click.argument("ip")
+def unblock(ip):
+    """Unblock a previously blocked IP address.
+
+    Removes the IP from your firewall and the blocklist.
+
+    Example: sudo netsieve unblock 203.0.113.44
+    """
+    from netsieve.block import unblock_ip
+    unblock_ip(ip)
+
+@_cli.command(name="list")
+def list_blocked():
+    """Show all currently blocked IP addresses."""
+    from netsieve.block import list_blocked as _list
+    _list()
+
+@_cli.command()
+def restore():
+    """Restore all blocked IPs from the blocklist (useful after reboot).
+
+    Reads ~/.netsieve_blocked.json and re-applies all blocks to iptables.
+    Run this after a reboot to re-apply your blocks.
+
+    Example: sudo netsieve restore
+    """
+    from netsieve.block import restore_blocked
+    restore_blocked()   
+    
 def main():
     show_banner()
     _cli()
