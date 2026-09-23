@@ -1,20 +1,22 @@
 import click
+import textwrap
 from rich.console import Console
 from rich.text import Text
 
 console = Console()
 
 def show_banner():
-    banner = (
-        "  _   _ _____ _____ ____ ___ _______     _______ \n"
-        " | \\ | | ____|_   _/ ___|_ _| ____\\ \\   / / ____| \n"
-        " |  \\| |  _|   | | \\___ \\ | ||  _|  \\ / / /|  _|   \n"
-        " | |\\  | |___  | |  ___) || || |___  \\ V / | |___  \n"
-        " |_| \\_|_____| |_| |____/___|_____|   \\_/  |_____| "
-    )
-    console.print(Text(banner, style="bold cyan"))
+    BANNER = textwrap.dedent(r"""
+        _   __ ______ ______ _____  ____ ______ _    __ ______
+       / | / // ____//_  __// ___//  _// ____// |  / // ____/
+      /  |/ // __/    / /   \__ \ / / / __/   | | / // __/
+     / /|  // /___   / /   ___/ // / / /___   | |/ // /___
+    /_/ |_//_____/  /_/   /____//___//_____/  |___//_____/
+    """).strip()
+
+    console.print(Text(BANNER, style="bold cyan"))
     console.print(Text("  Passive network capture | Payload decode | Attacker trace", style="dim"))
-    console.print()
+    console.print()   
 
 @click.group()
 @click.version_option()
