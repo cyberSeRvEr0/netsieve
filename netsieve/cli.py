@@ -1,4 +1,5 @@
 import click
+import os
 import textwrap
 from rich.console import Console
 from rich.text import Text
@@ -13,16 +14,15 @@ def show_banner():
      / /|  // /___   / /   ___/ // / / /___   | |/ // /___
     /_/ |_//_____/  /_/   /____//___//_____/  |___//_____/
     """).strip()
-
     console.print(Text(BANNER, style="bold cyan"))
     console.print(Text("  Passive network capture | Payload decode | Attacker trace", style="dim"))
-    console.print()   
+    console.print()
 
 @click.group()
 @click.version_option()
 def _cli():
     """NetSieve — Passive network capture, payload decoding, and attacker tracing."""
-    pass
+    pass   
 
 @_cli.command()
 def setup():
@@ -87,7 +87,7 @@ def detect(interface, duration, webhook):
     """
     from netsieve.detect import run_detect
     run_detect(interface=interface, duration=duration, webhook_url=webhook)   
-    
+
 @_cli.command()
 @click.argument("ip")
 def trace(ip):
@@ -171,7 +171,89 @@ def restore():
     Example: sudo netsieve restore
     """
     from netsieve.block import restore_blocked
-    restore_blocked()
+    restore_blocked()   
+
+@_cli.command()
+@click.option("--webhook", "-w", default=None, help="Webhook URL for alerts")
+@click.option("--interface", "-i", default=None, help="Network interface")
+def service(webhook, interface):
+    """Install NetSieve as a background service (runs forever, survives reboot).
+
+    After running this, control it with:
+      sudo systemctl start netsieve    (start watching)
+      sudo systemctl stop netsieve     (stop watching)
+      sudo systemctl status netsieve   (check if running)
+      sudo systemctl enable netsieve   (auto-start on boot)
+
+    Example: sudo netsieve service -w "https://ntfy.sh/netsieve-shrewd"
+    """
+    import pwd
+    import subprocess
+
+    sudo_user = os.environ.get("SUDO_USER")
+    if sudo_user:
+        user_home = pwd.getpwnam(sudo_user).pw_dir
+    else:
+        user_home = os.path.expanduser("~")
+
+    netsieve_path = os.path.join(user_home, ".local", "bin", "netsieve")
+    webhook_flag = f' -w "{webhook}"' if webhook else ""
+    iface_flag = f' -i {interface}' if interface else ""
+
+    service_content = f"""[Unit]
+Description=NetSieve - Network attack detection service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart={netsieve_path} detect{webhook_flag}{iface_flag}
+Restart=always
+RestartSec=5
+User={sudo_user or "root"}
+
+[Install]
+WantedBy=multi-user.target
+"""
+
+    service_path = "/etc/systemd/system/netsieve.service"
+    with open(service_path, "w") as f:
+        f.write(service_content)
+
+    subprocess.run(["systemctl", "daemon-reload"], capture_output=True)
+    subprocess.run(["systemctl", "enable", "netsieve"], capture_output=True)
+    subprocess.run(["systemctl", "start", "netsieve"], capture_output=True)
+
+    console.print(Text("\n  \u2713 NetSieve service installed and started.", style="bold green"))
+    console.print(Text("\n  Control it with:", style="bold"))
+    console.print(Text("    sudo systemctl start netsieve    (start)", style="cyan"))
+    console.print(Text("    sudo systemctl stop netsieve     (stop)", style="cyan"))
+    console.print(Text("    sudo systemctl status netsieve   (check status)", style="cyan"))
+    console.print(Text("    sudo systemctl restart netsieve  (restart)", style="cyan"))
+    console.print()
+
+@_cli.command(name="service-remove")
+def service_remove():
+    """Remove the NetSieve background service.
+
+    Stops the service, disables it from starting on boot, and deletes
+    the service file.
+
+    Example: sudo netsieve service-remove
+    """
+    import subprocess
+
+    subprocess.run(["systemctl", "stop", "netsieve"], capture_output=True)
+    subprocess.run(["systemctl", "disable", "netsieve"], capture_output=True)
+
+    service_path = "/etc/systemd/system/netsieve.service"
+    if os.path.exists(service_path):
+        os.remove(service_path)
+
+    subprocess.run(["systemctl", "daemon-reload"], capture_output=True)
+
+    console.print(Text("\n  \u2713 NetSieve service removed.", style="bold green"))
+    console.print(Text("  The service is stopped and will not start on next boot.", style="dim"))
+    console.print()
 
 def main():
     show_banner()
