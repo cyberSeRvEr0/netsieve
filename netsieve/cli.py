@@ -26,17 +26,12 @@ def _cli():
 
 @_cli.command()
 def setup():
-    """Install system dependencies (iptables, traceroute).
+    """Install all required system dependencies (iptables, traceroute).
 
-    Checks what's missing and installs it automatically.
-    Run this ONCE after installing netsieve.
+    Checks for and installs any missing system packages automatically.
+    Run this once after installing netsieve.
 
-    What it installs:
-      iptables    — used by 'block', 'unblock', 'restore'
-      traceroute  — used by 'trace' and 'report'
-
-    Example:
-      sudo netsieve setup
+    Example: sudo netsieve setup
     """
     import shutil
     import subprocess
@@ -55,8 +50,23 @@ def setup():
                 console.print(Text(f"  \u2713 {name} \u2014 installed", style="green"))
             else:
                 console.print(Text(f"  \u2717 {name} \u2014 FAILED", style="red"))
+
+    # Create symlink so 'sudo netsieve' works
+    sudo_user = os.environ.get("SUDO_USER")
+    if sudo_user:
+        import pwd
+        user_home = pwd.getpwnam(sudo_user).pw_dir
+    else:
+        user_home = os.path.expanduser("~")
+
+    netsieve_bin = os.path.join(user_home, ".local", "bin", "netsieve")
+    link_path = "/usr/local/bin/netsieve"
+    if os.path.exists(netsieve_bin) and not os.path.exists(link_path):
+        subprocess.run(["ln", "-s", netsieve_bin, link_path], capture_output=True)
+        console.print(Text(f"  \u2713 symlinked to {link_path} (sudo now works)", style="green"))
+
     console.print(Text("\n  All dependencies ready.", style="bold green"))
-    console.print()
+    console.print()   
 
 @_cli.command()
 @click.option("--interface", "-i", default=None, help="Network interface (e.g. eth0, wlan0). Default: auto.")
