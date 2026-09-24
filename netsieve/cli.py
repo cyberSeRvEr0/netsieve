@@ -285,7 +285,7 @@ def service(webhook, interface):
     else:
         user_home = os.path.expanduser("~")
 
-    netsieve_path = os.path.join(user_home, ".local", "bin", "netsieve")
+    netsieve_path = "/usr/local/bin/netsieve"   
     webhook_flag = f' -w "{webhook}"' if webhook else ""
     iface_flag = f' -i {interface}' if interface else ""
 
