@@ -26,12 +26,17 @@ def _cli():
 
 @_cli.command()
 def setup():
-    """Install all required system dependencies (iptables, traceroute).
+    """Install system dependencies (iptables, traceroute).
 
-    Checks for and installs any missing system packages automatically.
-    Run this once after installing netsieve.
+    Checks what's missing and installs it automatically.
+    Run this ONCE after installing netsieve.
 
-    Example: sudo netsieve setup
+    What it installs:
+      iptables    — used by 'block', 'unblock', 'restore'
+      traceroute  — used by 'trace' and 'report'
+
+    Example:
+      sudo netsieve setup
     """
     import shutil
     import subprocess
@@ -54,36 +59,56 @@ def setup():
     console.print()
 
 @_cli.command()
-@click.option("--interface", "-i", default=None, help="Network interface to listen on (e.g. eth0, wlan0). Default: auto-detect.")
-@click.option("--duration", "-d", default=None, type=int, help="How long to capture, in seconds. Example: -d 30 captures for 30 seconds. Default: runs until Ctrl+C.")
-@click.option("--output", "-o", default="~/captures", help="Folder where captured results are saved. Example: -o ~/my-captures")
+@click.option("--interface", "-i", default=None, help="Network interface (e.g. eth0, wlan0). Default: auto.")
+@click.option("--duration", "-d", default=None, type=int, help="Seconds to capture. Default: runs until Ctrl+C.")
+@click.option("--output", "-o", default="~/captures", help="Folder to save .txt files. Default: ~/captures/")
 def capture(interface, duration, output):
-    """Passively capture network packets, decode payloads into plain text, and save them to files.
+    """Capture all network traffic, decode payloads, save as readable .txt files.
 
-    Watches the network and logs every packet that passes through.
-    Each conversation (flow) is saved as a .txt file in the output folder.
-    Payloads are decoded so you can read them without Wireshark.
+    Every conversation (flow) between two IPs is saved as a separate file.
+    Files are organized by date: ~/captures/2026-09-24/
 
-    Example: sudo netsieve capture -i eth0 -d 60
+    After it finishes, check results:
+      ls ~/captures/2026-09-24/
+      cat ~/captures/2026-09-24/10_0_0_1_to_93_184_216_34_TCP_443.txt
+
+    Examples:
+      sudo netsieve capture -d 30              Capture for 30 seconds
+      sudo netsieve capture -i eth0 -d 60      Capture on eth0 for 60 seconds
+      sudo netsieve capture -o ~/evidence/     Save to a custom folder
     """
     from netsieve.capture import NetSieve
     ns = NetSieve(interface=interface, output_dir=output)
     ns.run(duration=duration)
 
 @_cli.command()
-@click.option("--interface", "-i", default=None, help="Network interface to watch (e.g. eth0, wlan0). Default: auto-detect.")
-@click.option("--duration", "-d", default=None, type=int, help="How long to watch, in seconds. Example: -d 60 watches for 60 seconds. Default: runs until Ctrl+C.")
-@click.option("--webhook", "-w", default=None, help="Slack or Discord webhook URL for alerts. Example: -w https://hooks.slack.com/services/XXX")
+@click.option("--interface", "-i", default=None, help="Network interface to watch. Default: auto.")
+@click.option("--duration", "-d", default=None, type=int, help="Seconds to watch. Default: runs until Ctrl+C.")
+@click.option("--webhook", "-w", default=None, help="URL to send alerts (Slack, Discord, ntfy.sh).")
 def detect(interface, duration, webhook):
-    """Watch the network in real-time and print an alert the moment an attack pattern is detected.
+    """Watch for incoming attacks in real-time. Print alert + send notification.
 
-    Scans every incoming packet for known threat signatures:
-    SQL injection, XSS, path traversal, command injection, SSRF.
-    When a match is found, it prints the attacker IP, the threat type,
-    and a snippet of the malicious data. At the end it lists all
-    attacking IPs so you can trace them.
+    Scans every packet for: SQL injection, XSS, path traversal,
+    command injection, SSRF. When found, prints the attacker IP and
+    threat type to the terminal. If -w is set, also sends a push
+    notification to your phone.
 
-    Example: sudo netsieve detect -d 30
+    Typical workflow:
+      1. sudo netsieve detect -d 30          Watch for 30s
+         → [ALERT] From: 203.0.113.44  Threat: SQL injection
+      2. netsieve trace 203.0.113.44         Identify the attacker
+      3. sudo netsieve block 203.0.113.44    Cut them off
+
+    Run forever in background (no terminal needed):
+      sudo netsieve service -w "https://ntfy.sh/your-topic"
+      sudo systemctl status netsieve         Check if running
+      sudo systemctl stop netsieve           Stop it
+      journalctl -u netsieve -f              Watch live logs
+
+    Examples:
+      sudo netsieve detect                   Watch until Ctrl+C
+      sudo netsieve detect -d 60             Watch for 60 seconds
+      sudo netsieve detect -w "https://ntfy.sh/my-app"   + phone alerts
     """
     from netsieve.detect import run_detect
     run_detect(interface=interface, duration=duration, webhook_url=webhook)   
@@ -91,34 +116,45 @@ def detect(interface, duration, webhook):
 @_cli.command()
 @click.argument("ip")
 def trace(ip):
-    """Trace an IP address — reverse DNS, GeoIP, threat intel, and network route.
+    """Identify an IP — reverse DNS, GeoIP, threat intel, network route.
 
-    Takes an IP address and looks up:
-    - Reverse DNS (what hostname it resolves to)
-    - GeoIP (country, city, ISP, organization)
-    - Threat intelligence (AbuseIPDB abuse score and report count)
-    - Traceroute (the network path from you to that IP)
+    Tells you WHO the attacker is:
+      - Reverse DNS (hostname)
+      - Country, city, ISP, organization
+      - Abuse score (0-100) from AbuseIPDB
+      - Full network route (traceroute)
 
-    Example: netsieve trace 203.0.113.44
+    After tracing, next steps:
+      netsieve report <ip>       Save forensic evidence
+      sudo netsieve block <ip>   Cut them off
+
+    Examples:
+      netsieve trace 203.0.113.44
+      netsieve trace 8.8.8.8
     """
     from netsieve.trace import trace_ip
     trace_ip(ip)
 
 @_cli.command()
 @click.argument("ip")
-@click.option("--output", "-o", default=None, help="File to save the report to. Example: -o evidence.txt. Default: netsieve_report_<ip>.txt")
+@click.option("--output", "-o", default=None, help="File to save report to. Default: netsieve_report_<ip>.txt")
 def report(ip, output):
-    """Generate a forensic report file for an IP address.
+    """Generate a forensic report file for an IP.
 
-    Creates a plain-text report containing:
-    - IP identification (reverse DNS, GeoIP, ISP)
-    - Threat intelligence (AbuseIPDB score)
-    - Network route (traceroute)
-    - Recommendations for the security team
+    Creates a plain-text file with:
+      - IP identification (DNS, GeoIP, ISP)
+      - Threat intelligence (AbuseIPDB score)
+      - Network route (traceroute)
+      - Recommendations for security team / law enforcement
 
-    The file is ready to share with a security team or law enforcement.
+    The file is ready to share with a CISO, SOC team, or LE.
 
-    Example: netsieve report 203.0.113.44 -o evidence.txt
+    After generating, check it:
+      cat netsieve_report_203.0.113.44.txt
+
+    Examples:
+      netsieve report 203.0.113.44
+      netsieve report 203.0.113.44 -o evidence_2026.txt
     """
     from netsieve.report import generate_report
     path = generate_report(ip, output=output)
@@ -127,13 +163,24 @@ def report(ip, output):
 @_cli.command()
 @click.argument("ip")
 def block(ip):
-    """Block an IP address — all traffic from it will be dropped.
+    """Block an IP — all traffic from it is dropped immediately.
 
-    Adds the IP to your firewall (iptables). The attacker can no longer
-    reach this machine. The block persists in ~/.netsieve_blocked.json
-    and can be restored after reboot with 'netsieve restore'.
+    Adds the IP to iptables (INPUT chain, DROP). The attacker
+    can no longer reach this machine. The block is saved to
+    ~/.netsieve_blocked.json so it survives reboots.
 
-    Example: sudo netsieve block 203.0.113.44
+    After blocking, verify:
+      netsieve list                    See all blocked IPs
+      cat ~/.netsieve_blocked.json     Raw blocklist
+
+    After a reboot, re-apply:
+      sudo netsieve restore
+
+    To remove the block later:
+      sudo netsieve unblock <ip>
+
+    Examples:
+      sudo netsieve block 203.0.113.44
     """
     from netsieve.block import block_ip
     block_ip(ip)
@@ -141,51 +188,83 @@ def block(ip):
 @_cli.command()
 @click.argument("ip")
 def unblock(ip):
-    """Unblock a previously blocked IP address.
+    """Remove a blocked IP — traffic from it is allowed again.
 
-    Removes the IP from your firewall and the blocklist.
+    Removes the IP from iptables and from ~/.netsieve_blocked.json.
 
-    Example: sudo netsieve unblock 203.0.113.44
+    Before unblocking, check who's blocked:
+      netsieve list
+
+    Examples:
+      sudo netsieve unblock 203.0.113.44
     """
     from netsieve.block import unblock_ip
     unblock_ip(ip)
 
 @_cli.command(name="list")
 def list_blocked():
-    """Show all currently blocked IP addresses.
+    """Show all currently blocked IPs.
 
     Reads ~/.netsieve_blocked.json and prints the list.
+    No sudo needed.
 
-    Example: netsieve list
+    If you want to unblock one:
+      sudo netsieve unblock <ip>
+
+    If you want to clear all:
+      sudo netsieve unblock <ip>   (repeat for each)
+
+    Example:
+      netsieve list
     """
     from netsieve.block import list_blocked as _list
     _list()
 
 @_cli.command()
 def restore():
-    """Restore all blocked IPs from the blocklist (useful after reboot).
+    """Re-apply all blocked IPs after a reboot.
 
-    Reads ~/.netsieve_blocked.json and re-applies all blocks to iptables.
-    Run this after a reboot to re-apply your blocks.
+    iptables rules are lost when the machine reboots. This command
+    reads ~/.netsieve_blocked.json and re-adds all rules to iptables.
 
-    Example: sudo netsieve restore
+    Run this after every reboot:
+      sudo netsieve restore
+
+    Or set it to auto-run via the service:
+      sudo netsieve service
+
+    Example:
+      sudo netsieve restore
     """
     from netsieve.block import restore_blocked
-    restore_blocked()   
+    restore_blocked()      
 
 @_cli.command()
-@click.option("--webhook", "-w", default=None, help="Webhook URL for alerts")
+@click.option("--webhook", "-w", default=None, help="Webhook URL for phone alerts")
 @click.option("--interface", "-i", default=None, help="Network interface")
 def service(webhook, interface):
     """Install NetSieve as a background service (runs forever, survives reboot).
 
-    After running this, control it with:
-      sudo systemctl start netsieve    (start watching)
-      sudo systemctl stop netsieve     (stop watching)
-      sudo systemctl status netsieve   (check if running)
-      sudo systemctl enable netsieve   (auto-start on boot)
+    After running this, detect runs in the background 24/7.
+    You don't need to keep a terminal open.
 
-    Example: sudo netsieve service -w "https://ntfy.sh/netsieve-shrewd"
+    Manage it with:
+      sudo systemctl start netsieve       Start watching
+      sudo systemctl stop netsieve        Stop watching
+      sudo systemctl status netsieve      Check if running
+      sudo systemctl restart netsieve     Restart (after config change)
+      sudo systemctl enable netsieve      Auto-start on boot (default)
+      sudo systemctl disable netsieve     Don't auto-start on boot
+      journalctl -u netsieve -f           Watch live logs in terminal
+      journalctl -u netsieve --since today  See today's logs
+
+    To remove the service completely:
+      sudo netsieve service-remove
+
+    Examples:
+      sudo netsieve service
+      sudo netsieve service -w "https://ntfy.sh/my-topic"
+      sudo netsieve service -i eth0 -w "https://hooks.slack.com/services/XXX"
     """
     import pwd
     import subprocess
@@ -224,21 +303,30 @@ WantedBy=multi-user.target
     subprocess.run(["systemctl", "start", "netsieve"], capture_output=True)
 
     console.print(Text("\n  \u2713 NetSieve service installed and started.", style="bold green"))
-    console.print(Text("\n  Control it with:", style="bold"))
-    console.print(Text("    sudo systemctl start netsieve    (start)", style="cyan"))
-    console.print(Text("    sudo systemctl stop netsieve     (stop)", style="cyan"))
-    console.print(Text("    sudo systemctl status netsieve   (check status)", style="cyan"))
-    console.print(Text("    sudo systemctl restart netsieve  (restart)", style="cyan"))
+    console.print(Text("\n  Manage it with:", style="bold"))
+    console.print(Text("    sudo systemctl start netsieve       (start)", style="cyan"))
+    console.print(Text("    sudo systemctl stop netsieve        (stop)", style="cyan"))
+    console.print(Text("    sudo systemctl status netsieve      (check)", style="cyan"))
+    console.print(Text("    journalctl -u netsieve -f           (live logs)", style="cyan"))
+    console.print(Text("    sudo netsieve service-remove        (remove)", style="cyan"))
     console.print()
 
 @_cli.command(name="service-remove")
 def service_remove():
-    """Remove the NetSieve background service.
+    """Remove the NetSieve background service completely.
 
-    Stops the service, disables it from starting on boot, and deletes
-    the service file.
+    Stops the service, disables auto-start on boot, deletes the
+    service file. After this, netsieve is no longer running in
+    the background.
 
-    Example: sudo netsieve service-remove
+    Your blocklist (~/.netsieve_blocked.json) is NOT deleted.
+    Your captures (~/.captures/) are NOT deleted.
+
+    After removing, if you want to run detect manually again:
+      sudo netsieve detect -d 30
+
+    Example:
+      sudo netsieve service-remove
     """
     import subprocess
 
@@ -252,7 +340,7 @@ def service_remove():
     subprocess.run(["systemctl", "daemon-reload"], capture_output=True)
 
     console.print(Text("\n  \u2713 NetSieve service removed.", style="bold green"))
-    console.print(Text("  The service is stopped and will not start on next boot.", style="dim"))
+    console.print(Text("  Run 'sudo netsieve detect' to watch manually.", style="dim"))
     console.print()
 
 def main():
