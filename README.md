@@ -15,8 +15,8 @@ One command. No config. No cloud. No daemon.
 
 git clone https://github.com/cyberSeRvEr0/netsieve.git
 cd netsieve
-pip install --break-system-packages .
-sudo netsieve setup   
+sudo pip install --break-system-packages --root-user-action=ignore .
+sudo netsieve setup    
 
 # 1. Watch for attacks (find the attacker)
 sudo netsieve detect -d 30

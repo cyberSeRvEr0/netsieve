@@ -278,6 +278,7 @@ def service(webhook, interface):
     """
     import pwd
     import subprocess
+    import shutil   
 
     sudo_user = os.environ.get("SUDO_USER")
     if sudo_user:
@@ -285,7 +286,7 @@ def service(webhook, interface):
     else:
         user_home = os.path.expanduser("~")
 
-    netsieve_path = "/usr/local/bin/netsieve"   
+    netsieve_path = shutil.which("netsieve") or os.path.expanduser("~/.local/bin/netsieve")     
     webhook_flag = f' -w "{webhook}"' if webhook else ""
     iface_flag = f' -i {interface}' if interface else ""
 
