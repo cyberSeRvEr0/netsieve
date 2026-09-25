@@ -6,7 +6,19 @@ def generate_report(ip, output=None):
     rdns = reverse_dns(ip)
     geo = geoip_lookup(ip)
     intel = threat_intel_check(ip)
-    route = traceroute(ip)
+    from netsieve.trace import traceroute_enriched
+    hops = traceroute_enriched(ip)
+    route_lines = []
+    for hop_num, hop_ip, geo in hops:
+        if geo:
+            route_lines.append(f"  {hop_num:>2}  {hop_ip:<16} {geo['city']}, {geo['country']} | {geo['isp']}")
+        else:
+            route_lines.append(f"  {hop_num:>2}  {hop_ip:<16} Unknown")
+    visible = [h for h in hops if h[2]]
+    if visible:
+        last = visible[-1]
+        route_lines.append(f"\n  Carrier boundary: {last[1]} | {last[2]['isp']}, {last[2]['country']}")
+    route = "\n".join(route_lines)   
 
     lines = []
     lines.append("=" * 50)
