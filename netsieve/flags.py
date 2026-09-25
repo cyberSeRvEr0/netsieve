@@ -2,8 +2,8 @@ import re
 
 PATTERNS = {
     "SQL injection": [
-        r"(?i)(union\s+select|drop\s+table|insert\s+into|delete\s+from|or\s+1\s*=\s*1|'--|;--)",
-    ],
+        r"(?i)(union[\s%20]+select|drop[\s%20]+table|insert[\s%20]+into|delete[\s%20]+from|or[\s%20]+1[\s%20]*=[\s%20]*1|'--|;--)",
+    ],   
     "XSS": [
         r"(?i)(<script|javascript:|onerror\s*=|onload\s*=|alert\()",
     ],

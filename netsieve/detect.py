@@ -17,6 +17,7 @@ def run_detect(interface=None, duration=None, webhook_url=None):
         return
 
     alerts = []
+    seen = set()   
 
     def handle_packet(pkt):
         if IP not in pkt or Raw not in pkt:
@@ -41,6 +42,10 @@ def run_detect(interface=None, duration=None, webhook_url=None):
 
         threats = check_payload(text)
         if threats:
+            dedup_key = (src_ip, dst_ip, tuple(threats))
+            if dedup_key in seen:
+                return
+            seen.add(dedup_key)   
             port = ""
             if TCP in pkt:
                 port = f":{pkt[TCP].dport}"
