@@ -34,6 +34,11 @@ def run_detect(interface=None, duration=None, webhook_url=None):
         except:
             return
 
+        # Skip binary/encrypted payloads — only check readable text
+        printable = sum(1 for c in text if c.isprintable() or c in '\n\r\t ')
+        if len(text) == 0 or printable / len(text) < 0.8:
+            return   
+
         threats = check_payload(text)
         if threats:
             port = ""
