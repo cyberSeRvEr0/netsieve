@@ -19,11 +19,16 @@ class Flow:
         self.first_seen = datetime.now()
         self.last_seen = datetime.now()
         self.flags = []
+        self._seen = set()
 
     def add(self, ts, decoded, http_text):
+        content_key = (decoded[:100], http_text[:100] if http_text else "")
+        if content_key in self._seen:
+            return
+        self._seen.add(content_key)
         self.last_seen = datetime.now()
-        self.packets.append({"time": ts, "decoded": decoded, "http": http_text})
-
+        self.packets.append({"time": ts, "decoded": decoded, "http": http_text})   
+        
 class NetSieve:
     def __init__(self, interface=None, output_dir="~/captures", min_payload_size=20):
         self.interface = interface
