@@ -1,5 +1,6 @@
 import time
 import os
+from scapy.utils import wrpcap   
 from pathlib import Path
 from datetime import datetime
 from collections import defaultdict
@@ -37,7 +38,15 @@ class NetSieve:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.flows = defaultdict(Flow)
         self.total_packets = 0
+        self.raw_packets = defaultdict(list)  # store raw packets for pcap export   
 
+    def _compute_ja3(self, ch):
+        try:
+            from ja3 import ja3_fingerprint  # pip install ja3
+            return ja3_fingerprint(ch)
+        except:
+            return None   
+    
     def run(self, duration=None):
         try:
             from scapy.all import sniff, IP, TCP, UDP, Raw
@@ -93,6 +102,18 @@ class NetSieve:
         http = extract_http(raw)
 
         self.flows[flow_key].add(datetime.now().strftime("%H:%M:%S"), decoded, http)
+        self.raw_packets[flow_key].append(pkt)
+
+        # JA3 extraction (TLS only)
+        if TCP in pkt and pkt[TCP].dport in (443, 8443, 8080):
+            try:
+                from scapy.layers.tls.handshake import TLSClientHello
+                if TLSClientHello in pkt:
+                    ja3_hash = self._compute_ja3(pkt[TLSClientHello])
+                    if ja3_hash and ja3_hash not in self.flows[flow_key].flags:
+                        self.flows[flow_key].flags.append(f"JA3:{ja3_hash}")
+            except ImportError:
+                pass  
 
         if http:
             threats = check_payload(http)
@@ -136,7 +157,16 @@ class NetSieve:
             else:
                 lines.append("VERDICT: No known threat patterns detected")
 
+            if self.raw_packets.get(key):
+                lines.append(f"PCAP: {safe_key}.pcap (open in Wireshark)")   
+
             filepath.write_text("\n".join(lines))
+
+            # PCAP export
+            if self.raw_packets.get(key):
+                pcap_path = filepath.with_suffix(".pcap")
+                wrpcap(str(pcap_path), self.raw_packets[key]) 
+
             saved += 1
 
         console.print()

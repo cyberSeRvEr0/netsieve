@@ -1,3 +1,5 @@
+import hashlib
+import platform   
 from datetime import datetime
 from pathlib import Path
 from netsieve.trace import reverse_dns, geoip_lookup, threat_intel_check, traceroute
@@ -53,10 +55,21 @@ def generate_report(ip, output=None):
     lines.append("")
     lines.append("=" * 50)
 
+    lines.append("--- EVIDENCE INTEGRITY ---")
+    lines.append(f"Tool: NetSieve v0.1.0")
+    lines.append(f"Host: {platform.node()} | {platform.system()} {platform.release()}")
+    lines.append(f"Python: {platform.python_version()}")
+    lines.append(f"SHA-256: (pending)")
+    lines.append("")
+    lines.append("=" * 50)   
+
     report_text = "\n".join(lines)
 
     if not output:
         output = f"netsieve_report_{ip}.txt"
 
     Path(output).write_text(report_text)
+    file_hash = hashlib.sha256(Path(output).read_bytes()).hexdigest()
+    final_text = report_text.replace("(pending)", file_hash)
+    Path(output).write_text(final_text)   
     return output   

@@ -6,7 +6,7 @@ from netsieve.webhook import send_webhook, format_alert
 
 console = Console()
 
-def run_detect(interface=None, duration=None, webhook_url=None):
+def run_detect(interface=None, duration=None, webhook_url=None, auto_block=False, auto_block_threshold=3):
     console.print(Text("  Watching for incoming attacks...", style="bold yellow"))
     console.print(Text("  Ctrl+C to stop.\n", style="dim"))
 
@@ -17,7 +17,12 @@ def run_detect(interface=None, duration=None, webhook_url=None):
         return
 
     alerts = []
-    seen = set()   
+    seen = set() 
+
+    from collections import Counter
+    ip_alert_count = Counter()
+    from netsieve.anomaly import AnomalyDetector
+    anomaly = AnomalyDetector()     
 
     def handle_packet(pkt):
         if IP not in pkt or Raw not in pkt:
@@ -62,6 +67,22 @@ def run_detect(interface=None, duration=None, webhook_url=None):
             }
             alerts.append(alert)
 
+            # Anomaly detection
+            port_num = port.replace(":", "") if port else None
+            if port_num:
+                anomaly.record(src_ip, int(port_num))
+            anomaly_flags = anomaly.check(src_ip)
+            if anomaly_flags:
+                alert["threats"].extend(anomaly_flags)
+
+            # Auto-block
+            ip_alert_count[src_ip] += 1
+            if auto_block and ip_alert_count[src_ip] >= auto_block_threshold:
+                from netsieve.block import block_ip
+                console.print(Text(f"  [AUTO-BLOCK] {src_ip} exceeded threshold. Blocking.", style="bold red"))
+                block_ip(src_ip)
+                ip_alert_count[src_ip] = 0   
+                
             console.print()
             console.print(Text(f"  [ALERT] {alert['time']}", style="bold red"))
             console.print(Text(f"    From: {src_ip}{port} → {dst_ip}", style="red"))

@@ -93,9 +93,11 @@ def capture(interface, duration, output):
 
 @_cli.command()
 @click.option("--interface", "-i", default=None, help="Network interface to watch. Default: auto.")
-@click.option("--duration", "-d", default=None, type=int, help="Seconds to watch. Default: runs until Ctrl+C.")
-@click.option("--webhook", "-w", default=None, help="URL to send alerts (Slack, Discord, ntfy.sh).")
-def detect(interface, duration, webhook):
+@click.option("--duration", "-d", type=int, default=None, help="Seconds to watch.")
+@click.option("--webhook", "-w", default=None, help="Webhook URL for alerts.")
+@click.option("--auto-block", is_flag=True, default=False, help="Auto-block IPs exceeding threshold.")
+@click.option("--threshold", default=3, type=int, help="Alert count before auto-block. Default: 3.")
+def detect(interface, duration, webhook, auto_block, threshold):
     """Watch for incoming attacks in real-time. Print alert + send notification.
 
     Scans every packet for: SQL injection, XSS, path traversal,
@@ -111,17 +113,16 @@ def detect(interface, duration, webhook):
 
     Run forever in background (no terminal needed):
       sudo netsieve service -w "https://ntfy.sh/your-topic"
-      sudo systemctl status netsieve         Check if running
-      sudo systemctl stop netsieve           Stop it
-      journalctl -u netsieve -f              Watch live logs
 
     Examples:
       sudo netsieve detect                   Watch until Ctrl+C
       sudo netsieve detect -d 60             Watch for 60 seconds
       sudo netsieve detect -w "https://ntfy.sh/my-app"   + phone alerts
+      sudo netsieve detect --auto-block --threshold 3    Auto-block after 3 alerts
     """
     from netsieve.detect import run_detect
-    run_detect(interface=interface, duration=duration, webhook_url=webhook)   
+    run_detect(interface=interface, duration=duration, webhook_url=webhook,
+               auto_block=auto_block, auto_block_threshold=threshold)    
 
 @_cli.command()
 @click.argument("ip")
@@ -144,6 +145,22 @@ def trace(ip):
     """
     from netsieve.trace import trace_ip
     trace_ip(ip)
+
+@_cli.command()
+@click.argument("ip")
+@click.option("--shodan-key", default=None, help="Shodan API key for deep lookup")
+def identify(ip, shodan_key):
+    """Deep IP identification: ASN, VPN/Tor detection, Shodan, passive DNS, WHOIS.
+
+    Goes beyond basic trace to determine if the attacker is hiding
+    behind a VPN, proxy, or Tor exit node.
+
+    Examples:
+      netsieve identify 185.220.101.1
+      netsieve identify 203.0.113.44 --shodan-key YOUR_KEY
+    """
+    from netsieve.identify import identify_ip
+    identify_ip(ip, shodan_key=shodan_key)   
 
 @_cli.command()
 @click.argument("ip")
