@@ -8,16 +8,18 @@ console = Console()
 
 def _asn_lookup(ip):
     try:
-        r = requests.get(f"https://ipinfo.io/{ip}/json", timeout=5)
+        r = requests.get(f"http://ip-api.com/json/{ip}", timeout=10)
         data = r.json()
-        asn = data.get("org", "")
-        # Extract AS number
-        m = re.match(r"AS\d+\s+(.*)", asn)
-        if m:
-            return {"asn": asn.split()[0], "name": m.group(1)}
-        return {"asn": asn, "name": asn}
-    except:
+        if data.get("status") == "success":
+            asn = data.get("as", "")
+            org = data.get("org", "")
+            m = re.match(r"(AS\d+)\s+(.*)", org)
+            if m:
+                return {"asn": m.group(1), "name": m.group(2)}
+            return {"asn": asn, "name": org}
         return None
+    except:
+        return None   
 
 def _vpn_check(ip):
     """Check against VPNBlocklist (free JSON)."""

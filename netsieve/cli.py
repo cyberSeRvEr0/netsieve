@@ -22,11 +22,11 @@ def show_banner():
 @click.version_option()
 def _cli():
     """NetSieve — Passive network capture, payload decoding, and attacker tracing."""
-    pass   
+    pass
 
 @_cli.command()
 def setup():
-    """Install all required system dependencies (iptables, traceroute).
+    """Install all required system dependencies (iptables, traceroute, python-whois, ja3).
 
     Checks for and installs any missing system packages automatically.
     Run this once after installing netsieve.
@@ -35,12 +35,14 @@ def setup():
     """
     import shutil
     import subprocess
+    import importlib
     console.print(Text("\n  Checking system dependencies...\n", style="bold"))
-    deps = {
+
+    system_deps = {
         "iptables": "sudo apt install iptables -y",
         "traceroute": "sudo apt install traceroute -y",
     }
-    for name, install_cmd in deps.items():
+    for name, install_cmd in system_deps.items():
         if shutil.which(name):
             console.print(Text(f"  \u2713 {name} \u2014 already installed", style="green"))
         else:
@@ -50,6 +52,25 @@ def setup():
                 console.print(Text(f"  \u2713 {name} \u2014 installed", style="green"))
             else:
                 console.print(Text(f"  \u2717 {name} \u2014 FAILED", style="red"))
+
+    python_deps = {
+        "whois": "python-whois",
+        "ja3": "ja3",
+    }
+    for module, package in python_deps.items():
+        try:
+            importlib.import_module(module)
+            console.print(Text(f"  \u2713 {package} \u2014 already installed", style="green"))
+        except ImportError:
+            console.print(Text(f"  \u2717 {package} \u2014 installing...", style="yellow"))
+            r = subprocess.run(
+                f"sudo pip install --break-system-packages --root-user-action=ignore {package}",
+                shell=True
+            )
+            if r.returncode == 0:
+                console.print(Text(f"  \u2713 {package} \u2014 installed", style="green"))
+            else:
+                console.print(Text(f"  \u2717 {package} \u2014 FAILED", style="red"))
 
     # Create symlink so 'sudo netsieve' works
     sudo_user = os.environ.get("SUDO_USER")
