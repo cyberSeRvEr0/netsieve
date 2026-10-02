@@ -33,11 +33,21 @@ class Flow:
 class NetSieve:
     def __init__(self, interface=None, output_dir="~/captures", min_payload_size=20):
         self.interface = interface
-        self.output_dir = Path(output_dir).expanduser()
+        # Resolve ~ to the real user's home, not root's
+        if output_dir.startswith("~"):
+            sudo_user = os.environ.get("SUDO_USER")
+            if sudo_user:
+                import pwd
+                home = pwd.getpwnam(sudo_user).pw_dir
+            else:
+                home = os.path.expanduser("~")
+            self.output_dir = Path(home) / output_dir[2:]
+        else:
+            self.output_dir = Path(output_dir).expanduser()
         self.min_payload_size = min_payload_size
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.flows = defaultdict(Flow)
-        self.total_packets = 0
+        self.total_packets = 0 
         self.raw_packets = defaultdict(list)  # store raw packets for pcap export   
 
     def _compute_ja3(self, ch):
