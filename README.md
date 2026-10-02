@@ -30,7 +30,7 @@ One command. No config. No cloud. No daemon.
 
 ## Configuration File (optional)
 
-Create `~/.config/netsieve/config.json` to set defaults once and never type flags again:
+Auto-created by sudo netsieve setup at ~/.config/netsieve/config.json. Edit it to change defaults without typing flags every time:
 
     {
       "output_dir": "~/captures",
@@ -316,7 +316,7 @@ To receive ntfy.sh alerts on your phone: install the **ntfy** app (Android/iOS) 
 
 | Command | What it does |
 |---------|-------------|
-| `sudo netsieve setup` | Installs `iptables` + `traceroute` if missing, creates the symlink. Run once after install |
+| `sudo netsieve setup` | Installs iptables, traceroute, python-whois, ja3 if missing, creates the symlink, and auto-creates the config file. Run once after install
 | `netsieve --version` | Prints the version number |
 | `netsieve --help` | Shows all available commands with descriptions |
 | `netsieve detect --help` | Shows all options/flags for `detect` specifically |
