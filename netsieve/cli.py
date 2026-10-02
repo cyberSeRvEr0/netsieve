@@ -1,9 +1,11 @@
 import click
 import os
+import json                # ← ADD
 import textwrap
+from pathlib import Path   # ← ADD
 from rich.console import Console
 from rich.text import Text
-from netsieve import __version__       # ← HERE, at the top
+from netsieve import __version__   
 
 console = Console()   
 
@@ -87,10 +89,34 @@ def setup():
         subprocess.run(["ln", "-s", netsieve_bin, link_path], capture_output=True)
         console.print(Text(f"  \u2713 symlinked to {link_path} (sudo now works)", style="green"))
 
+    # Auto-create config file with defaults if it doesn't exist
+    config_dir = Path.home() / ".config" / "netsieve"
+    config_path = config_dir / "config.json"
+    if sudo_user:
+        config_dir = Path(user_home) / ".config" / "netsieve"
+        config_path = config_dir / "config.json"
+
+    if not config_path.exists():
+        config_dir.mkdir(parents=True, exist_ok=True)
+        default_config = {
+            "output_dir": "~/captures",
+            "min_payload_size": 20,
+            "interface": None,
+            "auto_block": False,
+            "auto_block_threshold": 3,
+            "webhook": None,
+            "shodan_key": None,
+            "save_pcap": True
+        }
+        config_path.write_text(json.dumps(default_config, indent=2))
+        console.print(Text(f"  \u2713 config created: {config_path}", style="green"))
+        console.print(Text(f"    Edit it to change defaults (webhook, auto_block, etc.)", style="dim"))
+    else:
+        console.print(Text(f"  \u2713 config exists: {config_path}", style="green"))   
     console.print(Text("\n  All dependencies ready.", style="bold green"))
     console.print()   
 
-@_cli.command()
+@_cli.command()   
 @click.option("--interface", "-i", default=None, help="Network interface (e.g. eth0, wlan0). Default: auto.")
 @click.option("--duration", "-d", default=None, type=int, help="Seconds to capture. Default: runs until Ctrl+C.")
 @click.option("--output", "-o", default="~/captures", help="Folder to save .txt files. Default: ~/captures/")
