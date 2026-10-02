@@ -56,7 +56,8 @@ def generate_report(ip, output=None):
     lines.append("=" * 50)
 
     lines.append("--- EVIDENCE INTEGRITY ---")
-    lines.append(f"Tool: NetSieve v0.1.0")
+    from netsieve import __version__
+    lines.append(f"Tool: NetSieve v{__version__}")   
     lines.append(f"Host: {platform.node()} | {platform.system()} {platform.release()}")
     lines.append(f"Python: {platform.python_version()}")
     lines.append(f"SHA-256: (pending)")

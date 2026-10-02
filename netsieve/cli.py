@@ -3,8 +3,9 @@ import os
 import textwrap
 from rich.console import Console
 from rich.text import Text
+from netsieve import __version__       # ← HERE, at the top
 
-console = Console()
+console = Console()   
 
 def show_banner():
     BANNER = textwrap.dedent(r"""
@@ -19,10 +20,10 @@ def show_banner():
     console.print()
 
 @click.group()
-@click.version_option()
+@click.version_option(version=__version__, prog_name="netsieve")
 def _cli():
     """NetSieve — Passive network capture, payload decoding, and attacker tracing."""
-    pass
+    pass   
 
 @_cli.command()
 def setup():
