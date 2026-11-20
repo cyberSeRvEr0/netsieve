@@ -28,12 +28,12 @@ def _cli():
 
 @_cli.command()
 def setup():
-    """Install required system dependencies (iptables and traceroute).
+    """Check system dependencies and create the default configuration.
 
-    Checks for and installs any missing system packages automatically.
-    Run this once after installing netsieve.
+    The install.sh script performs the full installation on Ubuntu/Debian.
+    This command can also install missing system packages on apt-based systems.
 
-    Example: sudo netsieve setup
+    Example: netsieve setup
     """
     import shutil
     import subprocess
@@ -72,7 +72,7 @@ def setup():
 
     netsieve_bin = os.path.join(user_home, ".local", "bin", "netsieve")
     link_path = "/usr/local/bin/netsieve"
-    if os.path.exists(netsieve_bin) and not os.path.lexists(link_path):
+    if os.geteuid() == 0 and os.path.exists(netsieve_bin) and not os.path.lexists(link_path):
         try:
             subprocess.run(["ln", "-s", netsieve_bin, link_path], capture_output=True, text=True, check=True)
             console.print(Text(f"  \u2713 symlinked to {link_path} (sudo now works)", style="green"))

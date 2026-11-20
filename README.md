@@ -9,28 +9,32 @@ One command, with an optional local config file. No cloud or daemon by default.
 ## Install
 
 **Requirements:**
-- Linux (real kernel required for `capture` and `detect` — WSL2 will NOT work for those)
-- Python 3.10+
-- `sudo` (needed for `capture`, `detect`, `block`, `unblock`, `restore`, `service`)
-- `traceroute` + `iptables` (installed automatically by `netsieve setup`)
+- Ubuntu or Debian with Python 3.10 or newer
+- `sudo` access (the installer uses it to install operating-system packages)
 
-    git clone https://github.com/cyberSeRvEr0/netsieve.git
-    cd netsieve
-    sudo pip install --break-system-packages --root-user-action=ignore .
-    sudo netsieve setup
+Clone the repository and run the installer as your **normal user**:
+
+```bash
+git clone https://github.com/cyberSeRvEr0/netsieve.git
+cd netsieve
+./install.sh
+```
+
+The installer installs the required Ubuntu/Debian packages (`python3`, `python3-venv`, `python3-pip`, `iptables`, and `traceroute`), creates an isolated `.venv`, installs NetSieve and its Python dependencies, creates the default config, and adds `/usr/local/bin/netsieve` for convenient use with `sudo`. It prompts for your sudo password when needed. It will not overwrite an existing `/usr/local/bin/netsieve`.
+
+Git intentionally does not run installation scripts during `git clone`; run `./install.sh` once after cloning. Do not run the installer with `sudo`, since that would make the project virtual environment root-owned.
 
 | Command | What it does |
 |---------|-------------|
 | `git clone ...` | Downloads the netsieve source code from GitHub |
 | `cd netsieve` | Enters the downloaded folder |
-| `sudo pip install --break-system-packages --root-user-action=ignore .` | Installs netsieve and its Python dependencies (including scapy, rich, requests, click, and python-whois) system-wide |
-| `sudo netsieve setup` | Installs `iptables` and `traceroute` if missing, and creates a symlink so `sudo netsieve` works |
+| `./install.sh` | Installs system and Python requirements, initializes config, and makes `netsieve` available on PATH |
 
 ---
 
 ## Configuration File (optional)
 
-Auto-created by sudo netsieve setup at ~/.config/netsieve/config.json. Edit it to change defaults without typing flags every time:
+Auto-created by `./install.sh` at `~/.config/netsieve/config.json`. Edit it to change defaults without typing flags every time:
 
     {
       "output_dir": "~/captures",
@@ -320,7 +324,7 @@ To receive ntfy.sh alerts on your phone: install the **ntfy** app (Android/iOS) 
 
 | Command | What it does |
 |---------|-------------|
-| `sudo netsieve setup` | Installs iptables and traceroute if missing, creates the symlink when needed, and auto-creates the config file. Run once after install
+| `netsieve setup` | Checks required system dependencies and creates the default config; `./install.sh` is the recommended full installation |
 | `netsieve --version` | Prints the version number |
 | `netsieve --help` | Shows all available commands with descriptions |
 | `netsieve detect --help` | Shows all options/flags for `detect` specifically |
@@ -333,6 +337,7 @@ To receive ntfy.sh alerts on your phone: install the **ntfy** app (Android/iOS) 
 ## Notes
 
 - `detect` and `capture` require `sudo` because they use raw packet capture (scapy).
+- The installer supports Ubuntu/Debian and requires Python 3.10+; WSL environments may not provide the kernel packet capture support needed by `detect` and `capture`.
 - `trace`, `identify`, `report`, `list` do NOT require `sudo` — they only make HTTP requests.
 - `block`, `unblock`, `restore` require `sudo` because they modify iptables rules.
 - Traceroute hop enrichment (GeoIP per hop) requires a direct network path. In a NAT VM, only the gateway hop will be visible. On a real server or bridged VM, all hops are shown.
