@@ -1,8 +1,7 @@
 import click
 import os
-import json                # ← ADD
+import json
 import textwrap
-from pathlib import Path   # ← ADD
 from rich.console import Console
 from rich.text import Text
 from netsieve import __version__   
@@ -29,7 +28,7 @@ def _cli():
 
 @_cli.command()
 def setup():
-    """Install all required system dependencies (iptables, traceroute, python-whois, ja3).
+    """Install required system dependencies (iptables and traceroute).
 
     Checks for and installs any missing system packages automatically.
     Run this once after installing netsieve.
@@ -38,42 +37,30 @@ def setup():
     """
     import shutil
     import subprocess
-    import importlib
+    from netsieve.config import DEFAULTS, _config_path
     console.print(Text("\n  Checking system dependencies...\n", style="bold"))
 
-    system_deps = {
-        "iptables": "sudo apt install iptables -y",
-        "traceroute": "sudo apt install traceroute -y",
-    }
-    for name, install_cmd in system_deps.items():
+    failed = []
+    package_manager = shutil.which("apt-get")
+    for name in ("iptables", "traceroute"):
         if shutil.which(name):
             console.print(Text(f"  \u2713 {name} \u2014 already installed", style="green"))
         else:
-            console.print(Text(f"  \u2717 {name} \u2014 installing...", style="yellow"))
-            r = subprocess.run(install_cmd, shell=True)
-            if r.returncode == 0:
+            if not package_manager:
+                console.print(Text(f"  \u2717 {name} \u2014 apt-get is unavailable", style="red"))
+                failed.append(name)
+                continue
+            console.print(Text(f"  Installing {name}...", style="yellow"))
+            command = [package_manager, "install", "-y", name]
+            if os.geteuid() != 0:
+                command.insert(0, "sudo")
+                command.insert(1, "-A")
+            r = subprocess.run(command, check=False)
+            if r.returncode == 0 and shutil.which(name):
                 console.print(Text(f"  \u2713 {name} \u2014 installed", style="green"))
             else:
                 console.print(Text(f"  \u2717 {name} \u2014 FAILED", style="red"))
-
-    python_deps = {
-        "whois": "python-whois",
-        "ja3": "ja3",
-    }
-    for module, package in python_deps.items():
-        try:
-            importlib.import_module(module)
-            console.print(Text(f"  \u2713 {package} \u2014 already installed", style="green"))
-        except ImportError:
-            console.print(Text(f"  \u2717 {package} \u2014 installing...", style="yellow"))
-            r = subprocess.run(
-                f"sudo pip install --break-system-packages --root-user-action=ignore {package}",
-                shell=True
-            )
-            if r.returncode == 0:
-                console.print(Text(f"  \u2713 {package} \u2014 installed", style="green"))
-            else:
-                console.print(Text(f"  \u2717 {package} \u2014 FAILED", style="red"))
+                failed.append(name)
 
     # Create symlink so 'sudo netsieve' works
     sudo_user = os.environ.get("SUDO_USER")
@@ -85,50 +72,44 @@ def setup():
 
     netsieve_bin = os.path.join(user_home, ".local", "bin", "netsieve")
     link_path = "/usr/local/bin/netsieve"
-    if os.path.exists(netsieve_bin) and not os.path.exists(link_path):
-        subprocess.run(["ln", "-s", netsieve_bin, link_path], capture_output=True)
-        console.print(Text(f"  \u2713 symlinked to {link_path} (sudo now works)", style="green"))
+    if os.path.exists(netsieve_bin) and not os.path.lexists(link_path):
+        try:
+            subprocess.run(["ln", "-s", netsieve_bin, link_path], capture_output=True, text=True, check=True)
+            console.print(Text(f"  \u2713 symlinked to {link_path} (sudo now works)", style="green"))
+        except (OSError, subprocess.CalledProcessError) as error:
+            detail = getattr(error, "stderr", None) or str(error)
+            failed.append(f"netsieve symlink: {detail.strip()}")
 
     # Auto-create config file with defaults if it doesn't exist
-    config_dir = Path.home() / ".config" / "netsieve"
-    config_path = config_dir / "config.json"
-    if sudo_user:
-        config_dir = Path(user_home) / ".config" / "netsieve"
-        config_path = config_dir / "config.json"
-
+    config_path = _config_path()
     if not config_path.exists():
-        config_dir.mkdir(parents=True, exist_ok=True)
-        default_config = {
-            "output_dir": "~/captures",
-            "min_payload_size": 20,
-            "interface": None,
-            "auto_block": False,
-            "auto_block_threshold": 3,
-            "webhook": None,
-            "shodan_key": None,
-            "save_pcap": True
-        }
-        config_path.write_text(json.dumps(default_config, indent=2))
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(json.dumps(DEFAULTS, indent=2))
         console.print(Text(f"  \u2713 config created: {config_path}", style="green"))
         console.print(Text(f"    Edit it to change defaults (webhook, auto_block, etc.)", style="dim"))
     else:
         console.print(Text(f"  \u2713 config exists: {config_path}", style="green"))   
+    if failed:
+        raise click.ClickException(f"Setup incomplete: {'; '.join(failed)}")
     console.print(Text("\n  All dependencies ready.", style="bold green"))
     console.print()   
 
 @_cli.command()   
 @click.option("--interface", "-i", default=None, help="Network interface (e.g. eth0, wlan0). Default: auto.")
-@click.option("--duration", "-d", default=None, type=int, help="Seconds to capture. Default: runs until Ctrl+C.")
-@click.option("--output", "-o", default="~/captures", help="Folder to save .txt files. Default: ~/captures/")
-def capture(interface, duration, output):
+@click.option("--duration", "-d", default=None, type=click.IntRange(min=1), help="Seconds to capture. Default: runs until Ctrl+C.")
+@click.option("--output", "-o", default=None, help="Folder to save .txt files. Default: config or ~/captures/")
+@click.option("--min-payload-size", type=click.IntRange(min=0), default=None, help="Minimum payload size in bytes.")
+@click.option("--save-pcap/--no-save-pcap", default=None, help="Save raw PCAP files (default: config setting).")
+def capture(interface, duration, output, min_payload_size, save_pcap):
     """Capture all network traffic, decode payloads, save as readable .txt files.
 
-    Every conversation (flow) between two IPs is saved as a separate file.
+    Each directional TCP/UDP flow (including source and destination ports)
+    is saved as a separate file.
     Files are organized by date: ~/captures/2026-09-24/
 
     After it finishes, check results:
       ls ~/captures/2026-09-24/
-      cat ~/captures/2026-09-24/10_0_0_1_to_93_184_216_34_TCP_443.txt
+      cat ~/captures/2026-09-24/*_TCP.txt
 
     Examples:
       sudo netsieve capture -d 30              Capture for 30 seconds
@@ -136,15 +117,25 @@ def capture(interface, duration, output):
       sudo netsieve capture -o ~/evidence/     Save to a custom folder
     """
     from netsieve.capture import NetSieve
-    ns = NetSieve(interface=interface, output_dir=output)
+    from netsieve.config import load_config
+    config = load_config()
+    ns = NetSieve(
+        interface=interface if interface is not None else config["interface"],
+        output_dir=output if output is not None else config["output_dir"],
+        min_payload_size=(
+            min_payload_size if min_payload_size is not None else config["min_payload_size"]
+        ),
+        save_pcap=save_pcap if save_pcap is not None else config["save_pcap"],
+        save_protocols=config["save_protocols"],
+    )
     ns.run(duration=duration)
 
 @_cli.command()
 @click.option("--interface", "-i", default=None, help="Network interface to watch. Default: auto.")
-@click.option("--duration", "-d", type=int, default=None, help="Seconds to watch.")
+@click.option("--duration", "-d", type=click.IntRange(min=1), default=None, help="Seconds to watch.")
 @click.option("--webhook", "-w", default=None, help="Webhook URL for alerts.")
-@click.option("--auto-block", is_flag=True, default=False, help="Auto-block IPs exceeding threshold.")
-@click.option("--threshold", default=3, type=int, help="Alert count before auto-block. Default: 3.")
+@click.option("--auto-block/--no-auto-block", default=None, help="Enable or disable auto-blocking.")
+@click.option("--threshold", default=None, type=click.IntRange(min=1), help="Alert count before auto-block.")
 def detect(interface, duration, webhook, auto_block, threshold):
     """Watch for incoming attacks in real-time. Print alert + send notification.
 
@@ -208,7 +199,9 @@ def identify(ip, shodan_key):
       netsieve identify 203.0.113.44 --shodan-key YOUR_KEY
     """
     from netsieve.identify import identify_ip
-    identify_ip(ip, shodan_key=shodan_key)   
+    from netsieve.config import load_config
+    config = load_config()
+    identify_ip(ip, shodan_key=shodan_key if shodan_key is not None else config["shodan_key"])
 
 @_cli.command()
 @click.argument("ip")
@@ -258,7 +251,8 @@ def block(ip):
       sudo netsieve block 203.0.113.44
     """
     from netsieve.block import block_ip
-    block_ip(ip)
+    if not block_ip(ip):
+        raise click.ClickException(f"Failed to block {ip}.")
 
 @_cli.command()
 @click.argument("ip")
@@ -274,7 +268,8 @@ def unblock(ip):
       sudo netsieve unblock 203.0.113.44
     """
     from netsieve.block import unblock_ip
-    unblock_ip(ip)
+    if not unblock_ip(ip):
+        raise click.ClickException(f"Failed to unblock {ip}.")
 
 @_cli.command(name="list")
 def list_blocked():
@@ -312,7 +307,8 @@ def restore():
       sudo netsieve restore
     """
     from netsieve.block import restore_blocked
-    restore_blocked()      
+    if not restore_blocked():
+        raise click.ClickException("One or more block rules could not be restored.")
 
 @_cli.command()
 @click.option("--webhook", "-w", default=None, help="Webhook URL for phone alerts")
@@ -343,17 +339,33 @@ def service(webhook, interface):
     """
     import pwd
     import subprocess
-    import shutil   
+    import shutil
 
+    if os.geteuid() != 0:
+        raise click.ClickException("Run 'netsieve service' with sudo to install a system service.")
     sudo_user = os.environ.get("SUDO_USER")
     if sudo_user:
-        user_home = pwd.getpwnam(sudo_user).pw_dir
+        account = pwd.getpwnam(sudo_user)
+        user_home = account.pw_dir
+        service_user = account.pw_name
     else:
         user_home = os.path.expanduser("~")
+        service_user = "root"
 
-    netsieve_path = shutil.which("netsieve") or os.path.expanduser("~/.local/bin/netsieve")     
-    webhook_flag = f' -w "{webhook}"' if webhook else ""
-    iface_flag = f' -i {interface}' if interface else ""
+    netsieve_path = shutil.which("netsieve")
+    if not netsieve_path:
+        raise click.ClickException("Could not find the netsieve executable in PATH.")
+
+    def quote_systemd_arg(value):
+        value = str(value).replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%").replace("$", "$$")
+        return f'"{value}"'
+
+    command = [netsieve_path, "detect"]
+    if interface:
+        command.extend(["--interface", interface])
+    if webhook:
+        command.extend(["--webhook", webhook])
+    exec_start = " ".join(quote_systemd_arg(arg) for arg in command)
 
     service_content = f"""[Unit]
 Description=NetSieve - Network attack detection service
@@ -361,22 +373,33 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart={netsieve_path} detect{webhook_flag}{iface_flag}
+ExecStart={exec_start}
 Restart=always
 RestartSec=5
-User={sudo_user or "root"}
+User={service_user}
+Environment=HOME={quote_systemd_arg(user_home)}
+Environment=PYTHONUNBUFFERED=1
+AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN
+CapabilityBoundingSet=CAP_NET_RAW CAP_NET_ADMIN
 
 [Install]
 WantedBy=multi-user.target
 """
 
     service_path = "/etc/systemd/system/netsieve.service"
-    with open(service_path, "w") as f:
-        f.write(service_content)
-
-    subprocess.run(["systemctl", "daemon-reload"], capture_output=True)
-    subprocess.run(["systemctl", "enable", "netsieve"], capture_output=True)
-    subprocess.run(["systemctl", "start", "netsieve"], capture_output=True)
+    try:
+        with open(service_path, "w", encoding="utf-8") as f:
+            f.write(service_content)
+        subprocess.run(["systemctl", "daemon-reload"], capture_output=True, text=True, check=True)
+        subprocess.run(
+            ["systemctl", "enable", "--now", "netsieve"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        detail = getattr(error, "stderr", None) or str(error)
+        raise click.ClickException(f"Failed to install/start the service: {detail.strip()}") from error
 
     console.print(Text("\n  \u2713 NetSieve service installed and started.", style="bold green"))
     console.print(Text("\n  Manage it with:", style="bold"))
@@ -406,14 +429,21 @@ def service_remove():
     """
     import subprocess
 
-    subprocess.run(["systemctl", "stop", "netsieve"], capture_output=True)
-    subprocess.run(["systemctl", "disable", "netsieve"], capture_output=True)
+    if os.geteuid() != 0:
+        raise click.ClickException("Run 'netsieve service-remove' with sudo.")
 
     service_path = "/etc/systemd/system/netsieve.service"
-    if os.path.exists(service_path):
-        os.remove(service_path)
-
-    subprocess.run(["systemctl", "daemon-reload"], capture_output=True)
+    try:
+        if os.path.exists(service_path):
+            if subprocess.run(["systemctl", "is-active", "--quiet", "netsieve"]).returncode == 0:
+                subprocess.run(["systemctl", "stop", "netsieve"], capture_output=True, text=True, check=True)
+            if subprocess.run(["systemctl", "is-enabled", "--quiet", "netsieve"]).returncode == 0:
+                subprocess.run(["systemctl", "disable", "netsieve"], capture_output=True, text=True, check=True)
+            os.remove(service_path)
+            subprocess.run(["systemctl", "daemon-reload"], capture_output=True, text=True, check=True)
+    except (OSError, subprocess.CalledProcessError) as error:
+        detail = getattr(error, "stderr", None) or str(error)
+        raise click.ClickException(f"Failed to remove the service: {detail.strip()}") from error
 
     console.print(Text("\n  \u2713 NetSieve service removed.", style="bold green"))
     console.print(Text("  Run 'sudo netsieve detect' to watch manually.", style="dim"))

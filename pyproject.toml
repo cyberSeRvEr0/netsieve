@@ -13,6 +13,7 @@ dependencies = [
     "rich>=13.0",
     "requests>=2.31",
     "click>=8.0",
+    "python-whois>=0.9",
 ]
 
 [project.scripts]

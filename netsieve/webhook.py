@@ -22,7 +22,7 @@ def send_webhook(url, title, message, color=0xFF0000):
 
     try:
         r = requests.post(url, json=payload, timeout=5)
-        if r.status_code == 200:
+        if 200 <= r.status_code < 300:
             console.print(Text("  [dim]Alert sent to webhook.[/]", style="dim"))
         else:
             console.print(Text(f"  [dim]Webhook failed: HTTP {r.status_code}[/]", style="yellow"))

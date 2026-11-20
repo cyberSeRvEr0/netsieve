@@ -2,7 +2,7 @@
 
 Passive network capture, payload decoding, and attacker tracing.
 
-One command. No config. No cloud. No daemon.
+One command, with an optional local config file. No cloud or daemon by default.
 
 ---
 
@@ -23,7 +23,7 @@ One command. No config. No cloud. No daemon.
 |---------|-------------|
 | `git clone ...` | Downloads the netsieve source code from GitHub |
 | `cd netsieve` | Enters the downloaded folder |
-| `sudo pip install --break-system-packages --root-user-action=ignore .` | Installs netsieve and its Python dependencies (scapy, rich, requests, click, ja3, python-whois) system-wide |
+| `sudo pip install --break-system-packages --root-user-action=ignore .` | Installs netsieve and its Python dependencies (including scapy, rich, requests, click, and python-whois) system-wide |
 | `sudo netsieve setup` | Installs `iptables` and `traceroute` if missing, and creates a symlink so `sudo netsieve` works |
 
 ---
@@ -35,6 +35,7 @@ Auto-created by sudo netsieve setup at ~/.config/netsieve/config.json. Edit it t
     {
       "output_dir": "~/captures",
       "min_payload_size": 20,
+      "save_protocols": ["TCP", "UDP"],
       "interface": null,
       "auto_block": false,
       "auto_block_threshold": 3,
@@ -46,15 +47,16 @@ Auto-created by sudo netsieve setup at ~/.config/netsieve/config.json. Edit it t
 | Key | What it controls |
 |-----|-----------------|
 | `output_dir` | Where capture files are saved |
-| `min_payload_size` | Minimum packet size (bytes) to record |
+| `min_payload_size` | Minimum payload size (bytes) to decode into the text file |
 | `interface` | Lock to one interface (e.g. `"eth0"`) or `null` for auto |
 | `auto_block` | If `true`, `detect` auto-blocks IPs that exceed threshold |
 | `auto_block_threshold` | Number of alerts before auto-block triggers (default 3) |
 | `webhook` | Webhook URL for phone alerts (ntfy.sh, Slack, Discord) |
 | `shodan_key` | Shodan API key for `identify` deep lookup |
 | `save_pcap` | If `true`, `capture` also saves raw `.pcap` files |
+| `save_protocols` | Protocols to include in capture: `TCP`, `UDP`, or both |
 
-If the file doesn't exist, defaults are used. CLI flags always override the config file.
+If the file doesn't exist, defaults are used. CLI options override configured values. For example, `capture --no-save-pcap` disables PCAP files and `detect --no-auto-block` disables configured auto-blocking.
 
 ---
 
@@ -68,7 +70,7 @@ This is the main use case: detect an attack → identify the attacker → block 
 | 2 | `netsieve trace 203.0.113.44` | Looks up that IP: reverse DNS, GeoIP (country, city, ISP), AbuseIPDB score, and enriched traceroute |
 | 3 | `netsieve identify 203.0.113.44` | Deep identification: ASN, VPN/Tor detection, Shodan ports/services, passive DNS history, WHOIS |
 | 4 | `sudo netsieve block 203.0.113.44` | Adds an iptables rule that drops ALL traffic from that IP. Saves to `~/.netsieve_blocked.json` |
-| 5 | `netsieve report 203.0.113.44 -o evidence.txt` | Generates a forensic report with SHA-256 hash, host info, and recommendations |
+| 5 | `netsieve report 203.0.113.44 -o evidence.txt` | Generates a forensic report with a verifiable report-body SHA-256, host info, and recommendations |
 | 6 | `netsieve list` | Shows all IPs currently in the blocklist |
 | 7 | `sudo netsieve unblock 203.0.113.44` | Removes the iptables rule and the IP from the blocklist |
 
@@ -141,15 +143,15 @@ When `--auto-block` is active, the same IP that triggers N alerts (default 3, co
 
 ---
 
-## `capture` — Record all traffic as readable files + PCAP
+## `capture` — Record IPv4 TCP/UDP traffic as readable files + PCAP
 
-Records ALL network traffic, decodes every payload into readable text, extracts JA3 TLS fingerprints, and saves each conversation (flow) between two IPs as a separate `.txt` file AND a raw `.pcap` file.
+Records IPv4 TCP/UDP traffic, decodes qualifying payloads into readable text, extracts JA3 TLS fingerprints, and saves each directional network flow as a `.txt` file and (when enabled) a raw `.pcap` file. The payload-size setting filters readable text only; PCAP retains packets for selected protocols even when they have no payload.
 
 Files are organized by date: `~/captures/2026-10-02/`
 
 | Command | What it does |
 |---------|-------------|
-| `sudo netsieve capture -d 30` | Records all traffic for 30 seconds, saves `.txt` + `.pcap` to `~/captures/` |
+| `sudo netsieve capture -d 30` | Records IPv4 TCP/UDP traffic for 30 seconds, saves `.txt` + `.pcap` to `~/captures/` |
 | `sudo netsieve capture -i eth0 -d 60` | Same but only on `eth0`, for 60 seconds |
 | `sudo netsieve capture -d 30 -o ~/evidence/` | Same but saves to a custom folder |
 
@@ -157,8 +159,8 @@ Files are organized by date: `~/captures/2026-10-02/`
 
 | File | Content |
 |------|---------|
-| `10_0_0_1_to_93_184_216_34_TCP_443.txt` | Readable decoded payloads, HTTP text, threat flags, JA3 hashes, verdict |
-| `10_0_0_1_to_93_184_216_34_TCP_443.pcap` | Raw packet data — open in Wireshark for full forensic analysis |
+| `<source>_<source-port>_to_<destination>_<destination-port>_TCP.txt` | Readable decoded payloads, HTTP text, threat flags, JA3 hashes, verdict |
+| Matching `.pcap` file | Raw packets for that directional flow — open in Wireshark |
 
 **JA3 fingerprinting:**
 
@@ -170,8 +172,8 @@ Every TLS (HTTPS) connection has a unique "ClientHello" fingerprint. NetSieve ex
 **After it finishes:**
 
     ls ~/captures/2026-10-02/
-    cat ~/captures/2026-10-02/10_0_0_1_to_93_184_216_34_TCP_443.txt
-    wireshark ~/captures/2026-10-02/10_0_0_1_to_93_184_216_34_TCP_443.pcap
+    cat ~/captures/2026-10-02/*_TCP.txt
+    wireshark ~/captures/2026-10-02/*.pcap
 
 ---
 
@@ -235,7 +237,7 @@ No `sudo` needed.
 
 ## `report` — Generate a forensic report file
 
-Same info as `trace` + `identify`, but writes it to a plain-text file with **chain of custody** (SHA-256 hash, hostname, OS, Python version) making it forensically admissible.
+Combines network and threat-intelligence details in a plain-text file with integrity metadata (SHA-256 report-body hash, hostname, OS, Python version). A hash alone does not establish chain of custody or legal admissibility.
 
 | Command | What it does |
 |---------|-------------|
@@ -250,9 +252,9 @@ Same info as `trace` + `identify`, but writes it to a plain-text file with **cha
 | Threat Intelligence | AbuseIPDB score, total reports |
 | Network Path | Full traceroute with per-hop GeoIP |
 | Recommendations | Block, check other systems, preserve evidence, file CERT report |
-| Evidence Integrity | SHA-256 hash of the file, hostname, OS, Python version, tool version |
+| Evidence Integrity | SHA-256 hash of the report body, hostname, OS, Python version, tool version |
 
-The SHA-256 hash means anyone can verify the file hasn't been tampered with. Essential for sharing with a CISO, SOC team, or law enforcement.
+The SHA-256 covers the complete report body before the integrity section. Verify it by hashing those exact bytes; the self-referential integrity section is intentionally excluded.
 
 ---
 
@@ -288,6 +290,8 @@ With `--auto-block` in the config file, the service will **actively block attack
 
 > Your blocklist (`~/.netsieve_blocked.json`), captures (`~/captures/`), and config (`~/.config/netsieve/`) are NOT deleted when you remove the service.
 
+The service runs as the invoking user and receives only the `CAP_NET_RAW` and `CAP_NET_ADMIN` capabilities needed for capture and firewall updates.
+
 ---
 
 ## Webhook alerts (phone notifications)
@@ -316,7 +320,7 @@ To receive ntfy.sh alerts on your phone: install the **ntfy** app (Android/iOS) 
 
 | Command | What it does |
 |---------|-------------|
-| `sudo netsieve setup` | Installs iptables, traceroute, python-whois, ja3 if missing, creates the symlink, and auto-creates the config file. Run once after install
+| `sudo netsieve setup` | Installs iptables and traceroute if missing, creates the symlink when needed, and auto-creates the config file. Run once after install
 | `netsieve --version` | Prints the version number |
 | `netsieve --help` | Shows all available commands with descriptions |
 | `netsieve detect --help` | Shows all options/flags for `detect` specifically |
@@ -334,5 +338,5 @@ To receive ntfy.sh alerts on your phone: install the **ntfy** app (Android/iOS) 
 - Traceroute hop enrichment (GeoIP per hop) requires a direct network path. In a NAT VM, only the gateway hop will be visible. On a real server or bridged VM, all hops are shown.
 - `identify --shodan-key` requires a free Shodan API key (500 credits/day on free tier). Without it, Shodan lookup is skipped.
 - PCAP files are only generated if `save_pcap` is `true` in config (default: `true`).
-- JA3 fingerprinting only works on TLS traffic (ports 443, 8443, 8080 by default).
+- Built-in JA3 fingerprinting only works when Scapy decodes a TLS ClientHello (ports 443, 8443, 8080 by default).
 - VPN/Tor detection in `identify` uses free public lists. For higher accuracy, consider a commercial threat intel feed.   
